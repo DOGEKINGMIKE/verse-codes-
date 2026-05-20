@@ -1,0 +1,1088 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /UnrealEngine.com/Temporary/UI }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+using { /Verse.org/Assets }
+using { /Fortnite.com/UI }
+using { /Verse.org/Colors }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Playspaces}
+using { /Fortnite.com/Game}
+
+RankStatType := enum {
+    Kills
+    Deaths
+    Elo
+    TimePlayed
+}
+
+player_stats_table := class<final><persistable>:
+    Kills:player_stat = player_stat{}
+    Deaths:player_stat = player_stat{}
+    Elo: player_stat = player_stat{}
+    TimePlayed:player_stat = player_stat{}
+
+player_stat := class<final><persistable>:
+    CurrentValue:int = 0
+    HighestValue:int = 0
+
+    SetHighestValue(NewValue:int)<transacts>:int=
+        if (NewValue > HighestValue):
+            NewValue
+        else:
+            HighestValue    
+
+MakeUpdatedPlayerStat<constructor>(OldStats:player_stat, NewValue:int)<transacts> := player_stat:
+    CurrentValue := NewValue
+    HighestValue := OldStats.SetHighestValue(NewValue)                
+
+MakePlayerStatsTable<constructor>(OldTable:player_stats_table)<transacts> := player_stats_table:
+    Kills := OldTable.Kills
+    Deaths := OldTable.Deaths
+    Elo := OldTable.Elo
+    TimePlayed := OldTable.TimePlayed
+
+player_stats_manager := class():
+
+    GetPlayerStats(Agent:agent)<decides><transacts>:player_stats_table=
+        var PlayerStats:player_stats_table = player_stats_table{}
+        if:
+            Player := player[Agent]
+            Player.IsActive[]
+            PlayerStatsTable := PlayerStatsMap[Player]
+            set PlayerStats = MakePlayerStatsTable(PlayerStatsTable)
+        PlayerStats
+
+    InitializeAllPlayers(Players:[]player):void =
+        for (Player : Players):
+            if (Player.IsActive[]):
+                InitializePlayer(Player)
+
+    InitializePlayer(Player:player):void=
+        if:
+            Player.IsActive[]
+            not PlayerStatsMap[Player]
+            set PlayerStatsMap[Player] = player_stats_table{}
+
+    RecordPlayerStat(Agent:agent, Stat:RankStatType, ?Value:int = 0):void=
+        if:
+            Player := player[Agent]
+            Player.IsActive[]
+            PlayerStatsTable := PlayerStatsMap[Player]
+            if(Stat = RankStatType.Elo):
+                EloStat := PlayerStatsTable.Elo
+                set PlayerStatsMap[Player] = player_stats_table:
+                    Kills := PlayerStatsTable.Kills
+                    Deaths := PlayerStatsTable.Deaths
+                    Elo := MakeUpdatedPlayerStat(EloStat, Value)
+                    TimePlayed := PlayerStatsTable.TimePlayed
+            else if(Stat = RankStatType.Kills):
+                KillStat := PlayerStatsTable.Kills
+                set PlayerStatsMap[Player] = player_stats_table:
+                    Kills := MakeUpdatedPlayerStat(KillStat, Value)
+                    Deaths := PlayerStatsTable.Deaths
+                    Elo := PlayerStatsTable.Elo
+                    TimePlayed := PlayerStatsTable.TimePlayed
+            else if(Stat = RankStatType.Deaths):
+                DeathStat := PlayerStatsTable.Deaths
+                set PlayerStatsMap[Player] = player_stats_table:
+                    Kills := PlayerStatsTable.Kills
+                    Deaths := MakeUpdatedPlayerStat(DeathStat, Value)
+                    Elo := PlayerStatsTable.Elo
+                    TimePlayed := PlayerStatsTable.TimePlayed
+            else if(Stat = RankStatType.TimePlayed):
+                TimeStat := PlayerStatsTable.TimePlayed
+                set PlayerStatsMap[Player] = player_stats_table:
+                    Kills := PlayerStatsTable.Kills
+                    Deaths := PlayerStatsTable.Deaths
+                    Elo := PlayerStatsTable.Elo
+                    TimePlayed := MakeUpdatedPlayerStat(TimeStat, Value)
+
+var PlayerStatsMap:weak_map(player, player_stats_table) = map{}
+
+Rank_Ui := class(creative_device):
+    var PlayerRankUi : weak_map(player, Custom_Player_Rank) = map{}
+    @editable RankSettings : Rank_Settings = Rank_Settings{}
+    PlayerStatsManager:player_stats_manager = player_stats_manager{}
+  
+    Txt1 : []texture = array:
+        rank_textures.Unknown_Rank_Graphic
+        rank_textures.Bronze_Rank_1
+        rank_textures.Bronze_Rank_2
+        rank_textures.Bronze_Rank_3
+        rank_textures.Silver_Rank_1
+        rank_textures.Silver_Rank_2
+        rank_textures.Silver_Rank_3
+        rank_textures.Gold_Rank_1
+        rank_textures.Gold_Rank_2
+        rank_textures.Gold_Rank_3
+        rank_textures.Platinum_Rank_1
+        rank_textures.Platinum_Rank_2
+        rank_textures.Platinum_Rank_3
+        rank_textures.Diamond_Rank_1
+        rank_textures.Diamond_Rank_2
+        rank_textures.Diamond_Rank_3
+        rank_textures.Elite_Rank
+        rank_textures.Champion_Rank
+        rank_textures.Unreal_Rank
+        <# TexturePath #>
+    
+
+
+    RoundFloat(Value:float, DecimalPlaces:int):float =
+        Multiplier := Pow(10.0, DecimalPlaces * 1.0)
+        var RoundedValues : float = 0.0
+        if(RoundedValuess := Round[Value * Multiplier] * 1.0):
+                set RoundedValues  = RoundedValuess
+        return RoundedValues / Multiplier
+    FloorFloat2Decimals(Value:float):string=
+        floatString := ToString(Value)
+        var stringToReturn:string=""
+        for(Char:floatString):
+            if(stringToReturn.Length < 4):
+                set stringToReturn += "{Char}"
+        return stringToReturn
+    AddKillsButton(Agent:agent):void=
+        if (PlayerObj := player[Agent], PlayerObj.IsActive[]):
+            PlayerStatsManager.InitializePlayer(PlayerObj)
+            OnPlayerAdded(Agent)
+        if:
+            CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent]
+            CurrentKills := CurrentPlayerStats.Kills.CurrentValue
+            CurrentElo := CurrentPlayerStats.Elo.CurrentValue
+        then:
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Elo, ?Value := CurrentElo + RankSettings.Rank_Difficulty.EloGainPerKill)
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Kills, ?Value := CurrentKills + 1)
+            UpdateAgentUi(Agent,"Kills") 
+            
+    AddKills(MaybeAgent:?agent):void=
+        if( Agent:= MaybeAgent?, PlayerObj:= player[Agent], PlayerObj.IsActive[]):
+            PlayerStatsManager.InitializePlayer(PlayerObj)
+            OnPlayerAdded(Agent)
+        if:
+            Agent := MaybeAgent?
+            CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent]
+            CurrentKills := CurrentPlayerStats.Kills.CurrentValue
+            CurrentElo := CurrentPlayerStats.Elo.CurrentValue
+        then:
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Elo, ?Value := CurrentElo + RankSettings.Rank_Difficulty.EloGainPerKill)
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Kills, ?Value := CurrentKills + 1)
+            UpdateAgentUi(Agent,"Kills")         
+    AddDeaths(Agent:agent):void=
+        if (PlayerObj := player[Agent], PlayerObj.IsActive[]):
+            PlayerStatsManager.InitializePlayer(PlayerObj)
+            OnPlayerAdded(Agent)
+        if(CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent],CurrentElo := CurrentPlayerStats.Elo.CurrentValue,CurrentDeaths := CurrentPlayerStats.Deaths.CurrentValue):
+           if(CurrentEloDiff: int = CurrentElo - RankSettings.Rank_Difficulty.EloLossPerDeath ,CurrentEloDiff <= 0):
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Elo, ?Value := 0)
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Deaths, ?Value := CurrentDeaths + 1)
+           else:
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Elo, ?Value := CurrentElo - RankSettings.Rank_Difficulty.EloLossPerDeath)
+            PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.Deaths, ?Value := CurrentDeaths + 1)
+            UpdateAgentUi(Agent, "Deaths")
+
+    TrackTimePlayed(Player:player)<suspends>:void=
+        loop:
+            Sleep(60.0)
+            if (not Player.IsActive[]):
+                break
+            if (FC := Player.GetFortCharacter[]):
+                if (Agent := FC.GetAgent[]):
+                    if (CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent]):
+                        CurrentTime := CurrentPlayerStats.TimePlayed.CurrentValue
+                        PlayerStatsManager.RecordPlayerStat(Agent, RankStatType.TimePlayed, ?Value := CurrentTime + 1)
+                
+    OnPlayerLeft(LeftPlayer:player):void = {}
+
+    OnBegin<override>()<suspends>:void=
+        Sleep(0.0)
+        initializeSpawners()
+        Playspace : fort_playspace = GetPlayspace()
+        Players := Playspace.GetPlayers()
+        PlayerStatsManager.InitializeAllPlayers(Players)
+        for(Player:Players):
+            if (Player.IsActive[], Agent := agent[Player]):
+                OnPlayerAdded(Agent)
+                OnPlayerSpawned(Agent)
+                spawn{TrackTimePlayed(Player)}
+        RankSettings.Display_Stats.DisplayPlayerStatsButton.InteractedWithEvent.Subscribe(ShowStatsLocation1)
+        RankSettings.Display_Stats.DisplayPlayerStatsButton2.InteractedWithEvent.Subscribe(ShowStatsLocation2)
+        for (ElimManager : RankSettings.Rank_Difficulty.Elimination_Managers):
+            ElimManager.EliminatedEvent.Subscribe(AddDeaths)
+            ElimManager.EliminationEvent.Subscribe(AddKills)
+        RankSettings.Debugger_Testing.AddKillsButtom.InteractedWithEvent.Subscribe(AddKillsButton)
+        RankSettings.Debugger_Testing.AddDeathsButton.InteractedWithEvent.Subscribe(AddDeaths)
+        GetPlayspace().PlayerRemovedEvent().Subscribe(OnPlayerLeft)
+ 
+        loop:
+            Sleep(0.0)
+            AddedPlayer:= Playspace.PlayerAddedEvent().Await()
+            if (P := player[AddedPlayer], P.IsActive[]):
+                PlayerStatsManager.InitializePlayer(P)
+            OnPlayerAdded(AddedPlayer)
+            OnPlayerSpawned(AddedPlayer)
+            if (P := player[AddedPlayer], P.IsActive[]):
+                spawn{TrackTimePlayed(P)}
+            initializeAllPowerUp()
+    
+    ShowStatsLocation1(Agent:agent):void=
+        if (Player := player[Agent], Player.IsActive[]):
+            ShowIndividualStats(Player, 1)
+            spawn{AutoHideStats(1, 5.0)}
+    
+    ShowStatsLocation2(Agent:agent):void=
+        if (Player := player[Agent], Player.IsActive[]):
+            ShowIndividualStats(Player, 2)
+            spawn{AutoHideStats(2, 5.0)}
+    
+    ShowIndividualStats(Player:player, Location:int):void=
+        if (Player.IsActive[], CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[agent[Player]]):
+            Kills := CurrentPlayerStats.Kills.CurrentValue
+            Deaths := CurrentPlayerStats.Deaths.CurrentValue
+            Elo := CurrentPlayerStats.Elo.CurrentValue
+            Time := CurrentPlayerStats.TimePlayed.CurrentValue
+            KD := if (Deaths = 0):
+                Kills * 1.0
+            else:
+                (Kills * 1.0) / (Deaths * 1.0)
+            
+            KillsBB := if (Location = 1):
+                RankSettings.Display_Stats.KillsBillboard
+            else:
+                RankSettings.Display_Stats.KillsBillboard2
+            DeathsBB := if (Location = 1):
+                RankSettings.Display_Stats.DeathsBillboard
+            else:
+                RankSettings.Display_Stats.DeathsBillboard2
+            EloBB := if (Location = 1):
+                RankSettings.Display_Stats.EloBillboard
+            else:
+                RankSettings.Display_Stats.EloBillboard2
+            KDBB := if (Location = 1):
+                RankSettings.Display_Stats.KDBillboard
+            else:
+                RankSettings.Display_Stats.KDBillboard2
+            TimeBB := if (Location = 1):
+                RankSettings.Display_Stats.TimeBillboard
+            else:
+                RankSettings.Display_Stats.TimeBillboard2
+            
+            KillsBB.ShowText()
+            KillsBB.SetText(KillsMessage(Kills))
+            
+            DeathsBB.ShowText()
+            DeathsBB.SetText(DeathsMessage(Deaths))
+            
+            EloBB.ShowText()
+            EloBB.SetText(EloMessage(Elo))
+            
+            KDBB.ShowText()
+            KDBB.SetText(KDMessage(KD))
+            
+            TimeBB.ShowText()
+            TimeBB.SetText(TimeMessage(Time))
+    
+    AutoHideStats(Location:int, Duration:float)<suspends>:void=
+        Sleep(Duration)
+        HideIndividualStats(Location)
+    
+    HideIndividualStats(Location:int):void=
+        KillsBB := if (Location = 1):
+            RankSettings.Display_Stats.KillsBillboard
+        else:
+            RankSettings.Display_Stats.KillsBillboard2
+        DeathsBB := if (Location = 1):
+            RankSettings.Display_Stats.DeathsBillboard
+        else:
+            RankSettings.Display_Stats.DeathsBillboard2
+        EloBB := if (Location = 1):
+            RankSettings.Display_Stats.EloBillboard
+        else:
+            RankSettings.Display_Stats.EloBillboard2
+        KDBB := if (Location = 1):
+            RankSettings.Display_Stats.KDBillboard
+        else:
+            RankSettings.Display_Stats.KDBillboard2
+        TimeBB := if (Location = 1):
+            RankSettings.Display_Stats.TimeBillboard
+        else:
+            RankSettings.Display_Stats.TimeBillboard2
+        
+        KillsBB.HideText()
+        DeathsBB.HideText()
+        EloBB.HideText()
+        KDBB.HideText()
+        TimeBB.HideText()
+ 
+    initializeSpawners():void=
+        for(Spawner:RankSettings.BackBling_Settings.PlayerSpawners):
+            Spawner.SpawnedEvent.Subscribe(initializePowerUp)
+    initializeAllPowerUp():void=
+        for(Player:GetPlayspace().GetPlayers()):
+            if (Player.IsActive[], CustomPlayer:Custom_Player_Rank = PlayerRankUi[Player]):
+                CustomPlayer.initializePowerUp()      
+    initializePowerUp(Player:agent):void=
+        if (PlayerObj := player[Player], PlayerObj.IsActive[]):
+            PlayerStatsManager.InitializePlayer(PlayerObj)
+            OnPlayerAdded(Player)         
+        if (PlayerObj := player[Player], CustomPlayer:Custom_Player_Rank = PlayerRankUi[PlayerObj]):
+            CustomPlayer.initializePowerUp()      
+    OnPlayerSpawned(Agent:agent):void=
+        if(FC:fort_character = Agent.GetFortCharacter[]):
+            FC.EliminatedEvent().Subscribe(OnEliminated)
+      
+    OnEliminated(Result:elimination_result):void=
+        Eliminator := Result.EliminatingCharacter
+        Elimniated := Result.EliminatedCharacter
+       
+        if(EliminatorChar : fort_character = Eliminator?):
+            if(AgentObj:=EliminatorChar.GetAgent[]):
+                if (PlayerObj := player[AgentObj], PlayerObj.IsActive[], CustomPlayer:Custom_Player_Rank = PlayerRankUi[PlayerObj]):
+                    if(CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[AgentObj]):
+                        EliminatorCurrentRank := CustomPlayer.PlayerCurrentRank()
+                        EliminatorName := AgentObj
+                        Kills:=CurrentPlayerStats.Kills.CurrentValue
+                        Deaths:=CurrentPlayerStats.Deaths.CurrentValue
+                        Elo := CurrentPlayerStats.Elo.CurrentValue
+                        KD:= RoundFloat((CurrentPlayerStats.Kills.CurrentValue *1.0) / (CurrentPlayerStats.Deaths.CurrentValue*1.0),2)
+                        if(ElimniatedAgent:=Elimniated.GetAgent[]):
+                            if (ElimPlayer := player[ElimniatedAgent], ElimPlayer.IsActive[], ElimniatedCustomPlayer:Custom_Player_Rank = PlayerRankUi[ElimPlayer]):
+                                spawn:
+                                    ElimniatedCustomPlayer.EnemyStatPopup( EliminatorName, EliminatorCurrentRank,Kills,Deaths,KD)
+    
+    UpdateAgentUi(Agent:agent,Increment:string):void=
+         if(CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent]):
+            if(Increment = "Kills",PlayerObj := player[Agent], PlayerObj.IsActive[], CustomPlayer := PlayerRankUi[PlayerObj]):
+                CustomPlayer.UpdateStatsAndProgressBar(CurrentPlayerStats.Elo.CurrentValue,"Kills", RankSettings.Rank_Difficulty.EloGainPerKill)
+            else if(Increment = "Deaths",PlayerObj := player[Agent], PlayerObj.IsActive[], CustomPlayer := PlayerRankUi[PlayerObj]):
+                    CustomPlayer.UpdateStatsAndProgressBar(CurrentPlayerStats.Elo.CurrentValue, "Deaths", RankSettings.Rank_Difficulty.EloLossPerDeath)     
+
+    OnPlayerAdded(Agent:agent):void=
+        if (PlayerObj := player[Agent], PlayerObj.IsActive[]):
+             if(CustomPlayer := PlayerRankUi[PlayerObj]):
+             else: 
+                 if (FC := Agent.GetFortCharacter[]):
+                    if(CurrentPlayerStats := PlayerStatsManager.GetPlayerStats[Agent]):   
+                        
+                     CustomPlayer:Custom_Player_Rank = Custom_Player_Rank{Player := Agent}
+                     option:
+                        set PlayerRankUi[PlayerObj] = CustomPlayer
+                        
+                     spawn{CustomPlayer.initiateRankSettings(RankSettings,Txt1)}
+                     CustomPlayer.initiateUI(CurrentPlayerStats.Elo.CurrentValue)
+                     
+                     Print("Player Added")
+    
+            
+      
+    
+    KillsMessage<localizes>(Value:int):message = "{Value}"
+    DeathsMessage<localizes>(Value:int):message = "{Value}"
+    EloMessage<localizes>(Value:int):message = "{Value}"
+    KDMessage<localizes>(Value:float):message = "{Value}"
+    TimeMessage<localizes>(Value:int):message = "{Value}"
+    
+Rank_Settings:=struct<concrete>{
+    @editable Rank_Difficulty : RankDifficulty = RankDifficulty{}
+    @editable Ranks : []Rank = array{}
+    @editable Progress_Bar_Settings : ProgressBarSettings = ProgressBarSettings{}
+    @editable Display_Stats : DisplayStats = DisplayStats{}
+    @editable Debugger_Testing : DebuggerTesting = DebuggerTesting{}
+    @editable BackBling_Settings : BackBlingSettings = BackBlingSettings{}
+}     
+
+Rank := struct<concrete>{ 
+    @editable RankName : string = "BRONZE l"
+    @editable RankEloGoal : int = 0
+    @editable RankThemeColor : color = color{R:=0.015625,G:=0.015625,B:=0.015625}
+   
+}      
+ProgressBarSettings := struct<concrete>{ 
+    @editable Progress_Bar_Type : ProgressBarType = ProgressBarType.EloCount
+    @editable Progress_Bar_Delay : float = 0.0
+    @editable Progress_LeadingColorBlock : color = color{R:=0.416667,G:=0.416667,B:=0.416667}
+
+   
+}      
+RankDifficulty := struct<concrete>{ 
+    @editable EloGainPerKill : int = 5
+    @editable EloLossPerDeath : int = 2
+    @editable ShowEloUpdates : logic = true
+    @editable Elimination_Managers : []elimination_manager_device = array{}
+    @editable PromotedSound : audio_player_device = audio_player_device{}
+    @editable DemotedSound : audio_player_device = audio_player_device{}
+    @editable RankUpXp : accolades_device = accolades_device{}
+   
+}  
+DebuggerTesting := struct<concrete>{ 
+    @editable AddKillsButtom : button_device = button_device{}
+    @editable AddDeathsButton : button_device = button_device{}   
+   
+
+   
+} 
+DisplayStats:= struct<concrete>{ 
+    @editable DisplayPlayerStatsButton : button_device = button_device{}   
+    @editable DisplayRankProp : creative_prop = creative_prop{}
+    @editable DisplayPlayerStatsButton2 : button_device = button_device{}   
+    @editable DisplayRankProp2 : creative_prop = creative_prop{}
+    @editable KillsBillboard : billboard_device = billboard_device{}
+    @editable DeathsBillboard : billboard_device = billboard_device{}
+    @editable EloBillboard : billboard_device = billboard_device{}
+    @editable KDBillboard : billboard_device = billboard_device{}
+    @editable TimeBillboard : billboard_device = billboard_device{}
+    @editable KillsBillboard2 : billboard_device = billboard_device{}
+    @editable DeathsBillboard2 : billboard_device = billboard_device{}
+    @editable EloBillboard2 : billboard_device = billboard_device{}
+    @editable KDBillboard2 : billboard_device = billboard_device{}
+    @editable TimeBillboard2 : billboard_device = billboard_device{}
+   
+
+   
+} 
+BackBlingSettings:= struct<concrete>{
+    @editable Vfx_PowerUps : []visual_effect_powerup_device = array{}
+    @editable PlayerSpawners : []player_spawner_device = array{}
+
+}
+ProgressBarType := enum{
+  
+   
+    Percentage
+    EloCount 
+    
+}
+
+
+
+Custom_Player_Rank:=class<unique>:
+    StringToMessage<localizes>(value:string)<computes> : message = "{value}"
+    Player:agent 
+    barThickness : float = 27.5
+    ProgressBarSize : float = 325.0
+    var EloUpdates : logic = true
+    var EloGainPerKill : int = 0
+    var EloLossPerDeath : int = 0
+    var CurrentRank:int = 0
+    var Elo:int = 0
+    var Kills:int = 0
+    var Deaths:int =  0
+    var Percentage : float = 0.0
+    var CurrentPercent : float = 0.0
+    var PercentAniRunning : logic = false
+    var MaxRank: int = 0
+    var RankNames : []string = array{}
+    var RankKillGoals : []int = array{}
+    var RankTxt1 : []texture = array{}
+    var RankThemeColors :[]color = array{}
+    var CurrentTexture : ?texture = false
+    var CurrentRankName : ?string = false
+    var CurrentColorTheme : ?color = false
+    var MaybeRankSettings : ?Rank_Settings = false
+    var ProgressFloat : float = 0.0
+    var ProgressDelay : float = 0.0 
+    var PromotedSounds : audio_player_device = audio_player_device{}
+    var DemotedSounds : audio_player_device = audio_player_device{}
+    var XpDeivce : accolades_device = accolades_device{}
+    var PromotedTextBlock : text_block = text_block{}
+    var DemotedTextBlock : text_block = text_block{}
+    var EloUpdatesTextBlock : text_block = text_block{}
+    var LeadingColorBlockColor: color = color{R:=0.416667,G:=0.416667,B:=0.416667}
+    var FrontColorBlock : texture_block = texture_block{ DefaultImage := rank_textures.reflectgradient ,DefaultDesiredSize:= vector2{X:= 335.0,Y:=34.0},DefaultTint:=color{R:=0.015625,G:=0.015625,B:=0.015625}}
+    var InstantUpdatedColorBlock : color_block = color_block{}
+    var BackColorBlock : color_block = color_block{}
+    var GradientTexture : texture_block = texture_block{ DefaultImage := rank_textures.gradientleftright ,DefaultDesiredSize:= vector2{X:= 0.0,Y:=27.5},DefaultTint:=color{R:=1.0,G:=1.0,B:=1.0}}
+    var DelayedProgressBarFloat : float = 0.0
+    var RankImage :texture_block =texture_block{ DefaultImage := rank_textures.Bronze_Rank_1 ,DefaultDesiredSize:= vector2{X:= 75.0,Y:=60.0}}
+    var ProgressTextBlock : text_block = text_block{}
+    var CurrentRankTextBlock : text_block = text_block{}
+    var VfxPowerupsArray : []visual_effect_powerup_device = array{}
+
+    var EnemyRankImage : texture_block = texture_block{ DefaultImage := rank_textures.Bronze_Rank_1 ,DefaultDesiredSize:= vector2{X:= 83.0,Y:=74.0}}
+    initiateRankSettings(RankSettingsObj:Rank_Settings, RankImagesArray:[]texture)<suspends>:void=
+         Print("Initiating Rank Settings")
+         set MaybeRankSettings = option{RankSettingsObj}
+         
+         if(RankSettings: Rank_Settings = MaybeRankSettings?):
+               set MaxRank = RankSettings.Ranks.Length 
+               set RankTxt1 = RankImagesArray
+               set EloUpdates = RankSettings.Rank_Difficulty.ShowEloUpdates
+               set EloGainPerKill = RankSettings.Rank_Difficulty.EloGainPerKill
+               set EloLossPerDeath = RankSettings.Rank_Difficulty.EloLossPerDeath
+               set ProgressDelay = RankSettings.Progress_Bar_Settings.Progress_Bar_Delay
+               set LeadingColorBlockColor = RankSettings.Progress_Bar_Settings.Progress_LeadingColorBlock
+               set VfxPowerupsArray=RankSettings.BackBling_Settings.Vfx_PowerUps
+               set PromotedSounds = RankSettings.Rank_Difficulty.PromotedSound
+               set DemotedSounds = RankSettings.Rank_Difficulty.DemotedSound
+                set XpDeivce = RankSettings.Rank_Difficulty.RankUpXp
+               Print("Rank setting found!")
+            for(RankIndex : RankSettings.Ranks):
+                set RankNames = RankNames + array{RankIndex.RankName}
+                set RankKillGoals = RankKillGoals + array{RankIndex.RankEloGoal}
+                set RankThemeColors = RankThemeColors + array{RankIndex.RankThemeColor}
+
+    initializePowerUp():void=
+        if(CurrentPowerUp := VfxPowerupsArray[CurrentRank]):
+           CurrentPowerUp.Pickup(Player)            
+    lol()<suspends>:void=
+       loop:
+        Task:=animateProgressBar()
+        Print("resetting")
+    animateProgressBar()<suspends>:void=
+        var index :int= 0
+        var mode : logic = false
+        Print("Animating Progress Bar")
+        loop:
+            Sleep(0.025)
+            Amounts : []type {_X:float where 0.000000 <= _X, _X <= 1.000000} = array{0.60,0.61,0.62,0.63,0.64,0.65,0.66,0.67,0.68,0.69,0.70,0.71,0.72,0.73,0.74,0.75,0.76,0.77,0.78,0.79,0.80,0.81,0.82,0.83,0.84,0.85,0.86,0.87,0.88,0.89,0.90,0.91,0.92,0.93,0.94,0.95,0.96,0.97,0.98,0.99,1.00}
+            if(Amountlol := Amounts[index]):
+             if(mode = false):
+                BackColorBlock.SetOpacity(Amountlol)
+                set index += 1
+                
+                if(index >= Amounts.Length -1 ):
+                    set mode = true
+             else:
+                BackColorBlock.SetOpacity(Amountlol)
+                set index -= 1
+                
+                if(index <= 0):
+                    set mode = false
+    
+       
+    initiateUI(CurrentElo:int):void=
+       Print("Initiating UI")
+       set Elo = CurrentElo
+       DetermineCurrentRank()   
+       initializePowerUp()
+       set CurrentTexture = option{RankTxt1[CurrentRank]}
+       set CurrentRankName = option{RankNames[CurrentRank]}
+       set CurrentColorTheme = option{RankThemeColors[CurrentRank]}
+       if(CurrentTxt1 : texture = CurrentTexture?, CurrentRankNames : string = CurrentRankName?,CurrentColorThemse : color = CurrentColorTheme?):
+         Print("Current Rank Name: {CurrentRankNames}")
+        if(CurrentRankGoal := RankKillGoals[CurrentRank+1]):
+            set ProgressTextBlock = text_block{DefaultText := StringToMessage("{Elo}/{CurrentRankGoal}"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=2.210504,Y:=1.179191}}}
+            set CurrentRankTextBlock = text_block{DefaultText := StringToMessage("{CurrentRankNames}"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=3.065025,Y:=1.665709}}}
+            set BackColorBlock = color_block{ DefaultDesiredSize:= vector2{X:=0.0,Y:=barThickness},DefaultColor:=color{R:=0.947917,G:=0.785188,B:=0.136914},DefaultOpacity:=0.8}
+            set InstantUpdatedColorBlock = color_block{ DefaultDesiredSize:= vector2{X:=ProgressFloat,Y:=24.0},DefaultColor:=LeadingColorBlockColor}
+            set PromotedTextBlock = text_block{DefaultText := StringToMessage("RANK UP!"), DefaultTextColor:=color{R:=0.066211,G:=1.0,B:=0.200985}, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=200.0,Y:=1.0}}}
+            set DemotedTextBlock = text_block{DefaultText := StringToMessage("DEMOTED"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=200.0,Y:=1.0}}}
+            set EloUpdatesTextBlock = text_block{DefaultText := StringToMessage("+5"), DefaultTextColor:=color{R:=0.0,G:=1.0,B:=0.016063}, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=0.0,Y:=1.0}}}
+            set RankImage = texture_block{DefaultImage := CurrentTxt1,DefaultDesiredSize:= vector2{X:= 75.0,Y:=60.0}}
+            PromotedTextBlock.SetTextOpacity(0.0)
+            DemotedTextBlock.SetTextOpacity(0.0)
+            EloUpdatesTextBlock.SetTextOpacity(0.0)
+            ProgressTextBlock.SetShadowOpacity(1.0)
+            CurrentRankTextBlock.SetShadowOpacity(1.0)
+            spawn{lol()}
+            initiateKillsAndProgressBar("Kills",true)
+            PlayerScoreWidget:canvas = MakeCanvas(ProgressTextBlock,CurrentRankTextBlock,CurrentTxt1,EloUpdatesTextBlock)
+            if(PlayerObj:=player[Player], PlayerUI := GetPlayerUI[PlayerObj]):
+                PlayerUI.AddWidget(PlayerScoreWidget)
+                Print("Widget Added")
+                UpdateUi()
+        else:
+            initializePowerUp()
+            set ProgressTextBlock = text_block{DefaultText := StringToMessage("ELO : {Elo}"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=2.210504,Y:=1.179191}}}
+            set CurrentRankTextBlock = text_block{DefaultText := StringToMessage("{CurrentRankNames}"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=3.065025,Y:=1.665709}}}
+            set BackColorBlock = color_block{ DefaultDesiredSize:= vector2{X:=327.0,Y:=barThickness},DefaultColor:=CurrentColorThemse,DefaultOpacity:=0.8}
+            set InstantUpdatedColorBlock = color_block{ DefaultDesiredSize:= vector2{X:=327.0,Y:=24.0},DefaultColor:=LeadingColorBlockColor}
+            set PromotedTextBlock = text_block{DefaultText := StringToMessage("RANK UP!"), DefaultTextColor:=color{R:=0.066211,G:=1.0,B:=0.200985}, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=200.0,Y:=1.0}}}
+            set DemotedTextBlock = text_block{DefaultText := StringToMessage("DEMOTED"), DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=200.0,Y:=1.0}}}
+            set EloUpdatesTextBlock = text_block{DefaultText := StringToMessage("+5"), DefaultTextColor:=color{R:=0.0,G:=1.0,B:=0.016063}, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=1.0,Y:=1.0}}}
+            set RankImage = texture_block{DefaultImage := CurrentTxt1,DefaultDesiredSize:= vector2{X:= 75.0,Y:=60.0}}
+            PromotedTextBlock.SetTextOpacity(0.0)
+            DemotedTextBlock.SetTextOpacity(0.0)
+            EloUpdatesTextBlock.SetTextOpacity(0.0)
+            ProgressTextBlock.SetShadowOpacity(1.0)
+            CurrentRankTextBlock.SetShadowOpacity(1.0)
+            spawn{lol()}
+            initiateKillsAndProgressBar("Kills",true)
+                    
+            PlayerScoreWidget:canvas = MakeCanvas(ProgressTextBlock,CurrentRankTextBlock,CurrentTxt1,EloUpdatesTextBlock)
+            if(PlayerObj:=player[Player], PlayerUI := GetPlayerUI[PlayerObj]):
+                PlayerUI.AddWidget(PlayerScoreWidget)
+                Print("Widget Added")
+                UpdateUi()
+                 
+    DetermineCurrentRank():void=
+        var index : int = 0
+        var RankedFound : logic = false
+        for(Ranks : RankKillGoals):
+            if(RankedFound = true,RankFoundName:string = RankNames[CurrentRank]):
+           
+            else if(Elo >= RankKillGoals[RankKillGoals.Length - 1 ]):
+                Print("Max Rank Reached")
+                set CurrentRank = RankKillGoals.Length -1
+                set RankedFound = true     
+            else if(Elo >=  Ranks and Elo < RankKillGoals[index + 1], NextRankGoal:=RankKillGoals[index+1] ):
+             
+                set CurrentRank = index
+                set RankedFound = true
+            
+            set index += 1             
+    initiateKillsAndProgressBar(Stat:string,Logic:logic):void=
+        if(CurrentRank = RankKillGoals.Length -1):
+            ProgressTextBlock.SetText(StringToMessage("ELO: {Elo}"))
+            set CurrentRank = RankKillGoals.Length -1
+            InstantUpdatedColorBlock.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+            BackColorBlock.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+            GradientTexture.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+            set CurrentTexture = option{RankTxt1[CurrentRank]}
+            set CurrentColorTheme = option{RankThemeColors[CurrentRank]}
+            set CurrentRankName = option{RankNames[CurrentRank]} 
+            if(CurrentColorThemse : color = CurrentColorTheme?):
+             BackColorBlock.SetColor(CurrentColorThemse)
+             DetermineCurrentRank()
+     
+        else if(NextRank:= RankKillGoals[CurrentRank+1],CurrentRankGoal:= RankKillGoals[CurrentRank]):
+                KillsDiff := Elo - CurrentRankGoal 
+                KillsDiffFloat := KillsDiff * 1.0
+                RankDiff := NextRank - CurrentRankGoal
+                RankDiffFloat := RankDiff * 1.0
+                set ProgressFloat =  330.0 / RankDiffFloat * KillsDiffFloat 
+                if(Logic = true):
+                   set DelayedProgressBarFloat = 330.0 / RankDiffFloat * KillsDiffFloat 
+                set ProgressFloat =  330.0 / RankDiffFloat * KillsDiffFloat 
+                set Percentage = 100.0 / RankDiffFloat * KillsDiffFloat 
+                UpdateUi(Stat)            
+    UpdateStatsAndProgressBar(Amount:int,StatObj:string,AmountToIncrement:int):void=
+        
+      if(Elo >=  RankKillGoals[RankKillGoals.Length - 1]):
+           set Elo  =  Amount
+           ProgressTextBlock.SetText(StringToMessage("ELO: {Elo}"))
+           set CurrentRank = RankKillGoals.Length -1
+           InstantUpdatedColorBlock.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+           BackColorBlock.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+           GradientTexture.SetDesiredSize(vector2{X:=327.0,Y:=barThickness}) 
+           set CurrentTexture = option{RankTxt1[CurrentRank]}
+           set CurrentColorTheme = option{RankThemeColors[CurrentRank]}
+           set CurrentRankName = option{RankNames[CurrentRank]} 
+           if(EloUpdates = true and StatObj = "Kills"):
+            spawn{EloUpdatesAnimation("Kills")}
+           if(EloUpdates = true and StatObj = "Deaths"):
+            spawn{EloUpdatesAnimation("Deaths")}
+           if(CurrentColorThemse : color = CurrentColorTheme?):
+            BackColorBlock.SetColor(CurrentColorThemse)
+           if(CurrentRank = RankKillGoals.Length -1  and Elo < RankKillGoals[RankKillGoals.Length - 1]):
+                DetermineCurrentRank()
+                DemotedSounds.Play(Player)
+                initializePowerUp()
+                set ProgressFloat = 100.0
+                set Percentage = 100.0
+              
+                spawn{RankUpOrDownAnimation()}
+                spawn{PopupAnimation(false)}
+                initiateKillsAndProgressBar(StatObj,false) 
+                UpdateUi(StatObj)
+      else:   
+    
+       if(NextRank:= RankKillGoals[CurrentRank+1],CurrentRankGoal:= RankKillGoals[CurrentRank]):
+       
+          if(StatObj = "Kills"):
+         
+            set Elo  =  Amount
+            set ProgressFloat = ProgressFloat + GetAmountToIncrement(NextRank,CurrentRankGoal) * AmountToIncrement
+            set Percentage = Percentage + AmounttoIncrementPercentage(CurrentRankGoal,NextRank) * AmountToIncrement
+           
+            if(Elo >= RankKillGoals[CurrentRank+1]):
+                Print("{Percentage}{CurrentPercent}")
+                DetermineCurrentRank()
+             
+                XpDeivce.Award(Player)
+                initializePowerUp()
+                set CurrentPercent = 0.0
+                PromotedSounds.Play(Player)
+                Print("Rank Up!")
+                spawn{RankUpOrDownAnimation()}
+                spawn{PopupAnimation(true)}
+              
+                initiateKillsAndProgressBar(StatObj,true)
+            if(EloUpdates = true):
+               spawn{EloUpdatesAnimation("Kills")}
+            UpdateUi(StatObj)  
+          else if(StatObj= "Deaths"):
+           
+            set Elo = Amount
+            set ProgressFloat = ProgressFloat - GetAmountToIncrement(NextRank,CurrentRankGoal) * AmountToIncrement
+            set Percentage = Percentage - AmounttoIncrementPercentage(CurrentRankGoal,NextRank) * AmountToIncrement
+
+            if(Elo<RankKillGoals[CurrentRank]):
+                Print("{Percentage}{CurrentPercent}")
+                DetermineCurrentRank()
+                initializePowerUp()
+                DemotedSounds.Play(Player)
+                Print("Rank Up!")
+                spawn{RankUpOrDownAnimation()}
+                spawn{PopupAnimation(false)}
+                initiateKillsAndProgressBar(StatObj,true) 
+            if(EloUpdates = true):
+                spawn{EloUpdatesAnimation("Deaths")}
+            UpdateUi(StatObj)
+    PlayerCurrentRank():int=
+        return CurrentRank          
+    EloUpdatesAnimation(Type:string)<suspends>:void=
+        var opacityArray : []type{_X:float where 0.000000 <= _X, _X <= 1.000000} = array{0.3333333333333333,0.3333333333333333,0.5000000000000001,0.6666666666666668,0.8333333333333335,1.0}
+        if(Type = "Kills"):
+            EloUpdatesTextBlock.SetText(StringToMessage("+{EloGainPerKill}"))
+            EloUpdatesTextBlock.SetTextColor(color{R:=0.0,G:=1.0,B:=0.016063})
+            var DesiredSize : float = 0.0
+            for(Value : opacityArray):
+                Sleep(0.0)
+                EloUpdatesTextBlock.SetShadowOffset(option{vector2{X:=DesiredSize,Y:=2.257583}})
+                EloUpdatesTextBlock.SetTextOpacity(Value)
+                set DesiredSize -= 1.333333333333333
+            Sleep(0.2)
+            EloUpdatesTextBlock.SetTextOpacity(0.0)
+            EloUpdatesTextBlock.SetShadowOffset(option{vector2{X:=0.0,Y:=2.257583}})
+        else if(Type = "Deaths"):
+            EloUpdatesTextBlock.SetText(StringToMessage("-{EloLossPerDeath}"))
+            EloUpdatesTextBlock.SetTextColor(color{R:=1.0,G:=0.0,B:=0.012482})
+            var DesiredSize : float = 0.0
+            for(Value : opacityArray):
+                Sleep(0.0)
+                EloUpdatesTextBlock.SetShadowOffset(option{vector2{X:=DesiredSize,Y:=2.257583}})
+                EloUpdatesTextBlock.SetTextOpacity(Value)
+                set DesiredSize -= 1.333333333333333
+            Sleep(0.5)
+            EloUpdatesTextBlock.SetTextOpacity(0.0)
+            EloUpdatesTextBlock.SetShadowOffset(option{vector2{X:=0.0,Y:=2.257583}})
+
+    RankUpOrDownAnimation()<suspends>:void=
+         set CurrentTexture = option{RankTxt1[CurrentRank]}
+      
+         MinDesiredSize := 0.0
+         MaxDesiredSize := 60.0
+         var CurrentDesiredSize : float = 60.0
+         var FirstLoopDone : logic = false
+         var SecondLoop : logic = false
+         
+         var ReturnString : string = ""
+         if(CurrentTxt1 : texture = CurrentTexture?,CurrentRankNames := RankNames[CurrentRank]):
+            loop:
+                
+                if(FirstLoopDone = false): 
+                        set CurrentDesiredSize -= 20.0
+                        RankImage.SetDesiredSize(vector2{X:=75.0,Y:=CurrentDesiredSize})
+                        if(CurrentDesiredSize <= MinDesiredSize):
+                            RankImage.SetImage(CurrentTxt1)
+                            set FirstLoopDone = true
+                else if(SecondLoop = false):
+                        set CurrentDesiredSize += 20.0
+                        RankImage.SetDesiredSize(vector2{X:=75.0,Y:=CurrentDesiredSize}) 
+                        if(CurrentDesiredSize >= MaxDesiredSize):
+                            set SecondLoop = true 
+                else if(FirstLoopDone = true and SecondLoop = true):
+                            set FirstLoopDone = false
+                            set SecondLoop = false
+                            break 
+                Sleep(0.02)             
+            for(Index := 0..CurrentRankNames.Length-1):
+                    if(Char:=CurrentRankNames[Index]): 
+                        set ReturnString = ReturnString + ToString(Char)
+                    Sleep(0.1)    
+                    CurrentRankTextBlock.SetText(StringToMessage("{ReturnString}"))
+
+    AmounttoIncrementPercentage(CurrentRankGoal:int,NextRank:int):float=
+        CurrentRankFloat := 1.0 * CurrentRankGoal
+        NextRankFloat := 1.0 * NextRank
+        Diff:float= NextRankFloat - CurrentRankFloat
+        AmountToIncrement := 100.0 / Diff
+        return AmountToIncrement
+              
+    UpdateUi(Type:string):void=
+        set CurrentTexture = option{RankTxt1[CurrentRank]}
+        set CurrentColorTheme = option{RankThemeColors[CurrentRank]}
+        set CurrentRankName = option{RankNames[CurrentRank]}
+      if(CurrentRankGoal := RankKillGoals[CurrentRank+1] , CurrentRankNames := RankNames[CurrentRank],CurrentTxt1 : texture = CurrentTexture?,CurrentColorThemse : color = CurrentColorTheme?,Rank_Settingss := MaybeRankSettings?):
+        
+        CurrentProgressBar := Rank_Settingss.Progress_Bar_Settings.Progress_Bar_Type
+       if(CurrentRank<>RankKillGoals.Length -1):
+        if(Type = "Kills"):
+            InstantUpdatedColorBlock.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness})
+            BackColorBlock.SetColor(CurrentColorThemse)
+            if( CurrentProgressBar = ProgressBarType.Percentage):
+            
+                if( CurrentPercentt:= Ceil[Percentage] ):
+                    ProgressTextBlock.SetText(StringToMessage("{CurrentPercentt}%"))
+                
+          
+            else if(CurrentProgressBar = ProgressBarType.EloCount):
+                ProgressTextBlock.SetText(StringToMessage("{Elo}/{CurrentRankGoal}"))
+            
+            if(CurrentRank <> RankKillGoals.Length -1):
+                spawn{DelayedProgressBar(Type)}
+          
+        else if(Type = "Deaths"):
+            BackColorBlock.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness}) 
+            GradientTexture.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness}) 
+            BackColorBlock.SetColor(CurrentColorThemse)
+            if( CurrentProgressBar = ProgressBarType.Percentage):
+                if( CurrentPercentt:= Ceil[Percentage] ):
+                    ProgressTextBlock.SetText(StringToMessage("{CurrentPercentt}%"))
+               
+              
+            else if(CurrentProgressBar = ProgressBarType.EloCount):
+                ProgressTextBlock.SetText(StringToMessage("{Elo}/{CurrentRankGoal}"))
+             
+            spawn{DelayedProgressBar(Type)} 
+        
+            
+    ProgressBarAni()<suspends>:void=
+            set PercentAniRunning = true
+            loop:
+             
+                set CurrentPercent += 0.01
+               if(CurrentPercentt:= Ceil[CurrentPercent]):
+                ProgressTextBlock.SetText(StringToMessage("{CurrentPercentt}%"))
+              if(CurrentPercent >= Percentage):
+                 set PercentAniRunning = false
+                        break
+    FloorFloat(Value:float):string=
+        floatString := ToString(Value)
+        var stringToReturn:string=""
+        for(Char:floatString):
+            if(stringToReturn.Length < 5):
+             set stringToReturn += "{Char}"
+        
+        return stringToReturn                       
+    DelayedProgressBar(Stat:string)<suspends>:void=
+     if(Stat = "Kills"):
+      if(Percentage > 0.0 or Elo > 0):
+        loop:
+             Sleep(0.00)
+             set DelayedProgressBarFloat += 1.0
+           
+            BackColorBlock.SetDesiredSize(vector2{X:=DelayedProgressBarFloat+3.0,Y:=barThickness}) 
+            GradientTexture.SetDesiredSize(vector2{X:=DelayedProgressBarFloat,Y:=barThickness}) 
+         if(DelayedProgressBarFloat >= ProgressFloat):
+             break
+     if(Stat = "Deaths"):
+      if(Percentage > 0.0 or Deaths > 0):
+        loop:
+             Sleep(0.00)
+             set DelayedProgressBarFloat -= 1.0
+           
+            InstantUpdatedColorBlock.SetDesiredSize(vector2{X:=DelayedProgressBarFloat,Y:=barThickness}) 
+            
+         if(DelayedProgressBarFloat <= ProgressFloat):
+             break
+     else: 
+        InstantUpdatedColorBlock.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness}) 
+        BackColorBlock.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness}) 
+        GradientTexture.SetDesiredSize(vector2{X:=ProgressFloat,Y:=barThickness}) 
+
+    PopupAnimation(RankUp:logic)<suspends>:void=
+        var opacityArray : []type{_X:float where 0.000000 <= _X, _X <= 1.000000} = array{0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0}
+        var backArray : []type{_X:float where 0.000000 <= _X, _X <= 1.000000} = array{1.0, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0.0}
+        var minOpacitySize : type{_X:float where 0.000000 <= _X, _X <= 1.000000} = 0.0
+        var DesiredSize : float = 50.0
+        if(RankUp = true):
+            PromotedTextBlock.SetText(StringToMessage("PROMOTED!"))
+            PromotedTextBlock.SetTextColor(color{R:=0.066211,G:=1.0,B:=0.200985})
+        else:
+            PromotedTextBlock.SetText(StringToMessage("DEMOTED!"))
+            PromotedTextBlock.SetTextColor(color{R:=1.0,G:=0.020607,B:=0.0})
+        for(Value : opacityArray):
+            Sleep(0.0)
+            PromotedTextBlock.SetShadowOffset(option{vector2{X:=DesiredSize,Y:=1.0}})
+            PromotedTextBlock.SetTextOpacity(Value)
+            set DesiredSize -= 2.5
+        Sleep(0.5)
+        for(Value:backArray):
+            Sleep(0.0)
+            PromotedTextBlock.SetShadowOffset(option{vector2{X:=DesiredSize,Y:=1.0}})
+            PromotedTextBlock.SetTextOpacity(Value)
+            set DesiredSize += 2.5
+    GetAmountToIncrement(NextRank:int,CurrentRankGoal:int):float= 
+            CurrentRankFloat := 1.0 * CurrentRankGoal
+            NextRankFloat := 1.0 * NextRank
+            Diffrential := NextRankFloat - CurrentRankFloat
+            AmountToIncrement := 330.0 / Diffrential
+            return AmountToIncrement    
+    PlayerName<localizes>(Agent:agent):message = "{Agent}" 
+    RoundFloat(Value:float, DecimalPlaces:int):float =
+        Multiplier := Pow(10.0, DecimalPlaces * 1.0)
+        var RoundedValues : float = 0.0
+        if(RoundedValuess := Round[Value * Multiplier] * 1.0):
+                set RoundedValues  = RoundedValuess
+        return RoundedValues / Multiplier 
+    EnemyStatPopup(EnmyName:agent,EnmyCurrentRank:int,EnmyKills:int,EnmyDeaths:int,EnmyKD:float)<suspends>:void=
+        PlayerStatWidget:canvas = MakePlayerStatCanvas( EnmyName,EnmyCurrentRank,EnmyKills,EnmyDeaths,EnmyKD)
+            if(PlayerObj:=player[Player], PlayerUI := GetPlayerUI[PlayerObj]):
+               if(EnemyImage:=RankTxt1[EnmyCurrentRank]):
+                EnemyRankImage.SetImage(EnemyImage)
+                if(EnmyKills > 0 and EnmyDeaths = 0 ):
+                    PlayerStatsTextBlock.SetText(StringToMessage(" Kills:{EnmyKills}\n Deaths:{EnmyDeaths}\n KD:{EnmyKills}.00"))
+                else:
+                 PlayerStatsTextBlock.SetText(StringToMessage(" Kills:{EnmyKills}\n Deaths:{EnmyDeaths}\n KD:{FloorFloat2Decimals(EnmyKD)}"))
+                PlayerNameTextBlock.SetText(PlayerName(EnmyName)) 
+                PlayerStatsTextBlock.SetShadowOpacity(1.0)
+                PlayerNameTextBlock.SetShadowOpacity(1.0)
+
+                PlayerUI.AddWidget(PlayerStatWidget)
+                Print("Stat Widget Added")
+                Sleep(5.0)
+                PlayerUI.RemoveWidget(PlayerStatWidget)
+    FloorFloat2Decimals(Value:float):string=
+        floatString := ToString(Value)
+        var stringToReturn:string=""
+        for(Char:floatString):
+            if(stringToReturn.Length < 4):
+                set stringToReturn += "{Char}"
+        return stringToReturn        
+    var PlayerStatsTextBlock : text_block = text_block{DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=3.7,Y:=2.5}}}   
+    var PlayerNameTextBlock : text_block = text_block{ DefaultTextColor:=NamedColors.White, DefaultShadowColor:=NamedColors.Black,  DefaultShadowOffset:=option{vector2{X:=3.7,Y:=2.5} }} 
+    MakePlayerStatCanvas(EnmyName:agent,EnmyCurrentRank:int,EnmyKills:int,EnmyDeaths:int,EnmyKD:float):canvas=
+        StatsStackbox:=stack_box:
+            Orientation := orientation.Vertical
+            Slots := array:
+                stack_box_slot:
+                    Widget:= PlayerStatsTextBlock
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Center
+        RankAndNameStackBox:=stack_box:
+            Orientation := orientation.Horizontal
+            Slots := array:
+                stack_box_slot:
+                    Widget:=EnemyRankImage
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Center
+                stack_box_slot:
+                    Widget:=PlayerNameTextBlock
+                    Padding:=margin{Left:=5.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Center
+        MainStackBox:=stack_box:    
+            Orientation := orientation.Vertical
+            Slots := array:
+                stack_box_slot:
+                    Widget:=RankAndNameStackBox
+                    Padding:=margin{Left:=0.0,Top:=10.0,Right:=10.0,Bottom:=10.0}
+                stack_box_slot:
+                    Widget:=StatsStackbox
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}   
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Center
+
+                   
+        MainOverlay := overlay:
+            Slots:=array:
+                overlay_slot:
+                    Widget := text_block{DefaultText := StringToMessage("ELIMINATED BY"), DefaultTextColor:=NamedColors.Red}
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Top
+                overlay_slot:
+                    Widget := MainStackBox
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Top
+                    Padding:= margin{Left:=0.0,Top:=40.0,Right:=0.0,Bottom:=0.0}
+        var MyCanvas : canvas = canvas:
+            Slots := array:
+                canvas_slot:
+                    Widget := MainOverlay
+                    Anchors:=anchors{Minimum:=vector2{X:=0.5,Y:=0.5},Maximum:=vector2{X:=0.5,Y:=0.5}}
+                    Alignment:=vector2{X:=0.5,Y:=0.5}
+                    SizeToContent:=true
+        return MyCanvas
+    MakeCanvas(ProgressTextBlocks:text_block,CurrentRankTextBlocks:text_block,CurrentTxt1:texture,EloUpdatesTextBlocks:text_block):canvas=
+        ProgressBarOverlay := overlay:
+            Slots:=array:
+                overlay_slot:
+                    Widget:=FrontColorBlock
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=4.0}   
+                overlay_slot:
+                    Widget:=InstantUpdatedColorBlock
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=4.0,Top:=4.0,Right:=4.0,Bottom:=7.0}    
+                overlay_slot:
+                    Widget:=GradientTexture
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=4.0,Top:=4.0,Right:=4.0,Bottom:=7.0} 
+                overlay_slot:
+                    Widget:=BackColorBlock
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=4.0,Top:=4.0,Right:=4.0,Bottom:=7.0} 
+                overlay_slot:    
+                    Widget:= ProgressTextBlocks
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Center
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+
+        EloUpdatesOverlay := overlay:
+            Slots:=array:
+                overlay_slot:
+                    Widget:=EloUpdatesTextBlocks
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+
+        ProgressBar := overlay:
+            Slots:=array:
+                overlay_slot:
+                    Widget:=PromotedTextBlock
+                    HorizontalAlignment:=horizontal_alignment.Right
+                    VerticalAlignment:=vertical_alignment.Center
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=23.0}
+                overlay_slot:
+                    Widget:=DemotedTextBlock
+                    HorizontalAlignment:=horizontal_alignment.Right
+                    VerticalAlignment:=vertical_alignment.Center
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=23.0}
+                overlay_slot:
+                    Widget:=ProgressBarOverlay
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+                overlay_slot:
+                    Widget:=CurrentRankTextBlocks
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Center
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=23.0}
+                
+    
+        
+
+        MainStackBox:=stack_box:    
+            Orientation := orientation.Horizontal 
+            Slots := array:
+                stack_box_slot:
+                    Widget:=RankImage
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=7.0,Bottom:=0.0}
+                    HorizontalAlignment:=horizontal_alignment.Center
+                    VerticalAlignment:=vertical_alignment.Top
+      
+                stack_box_slot:
+                    Widget:=ProgressBar
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+                    HorizontalAlignment:=horizontal_alignment.Fill
+                    VerticalAlignment:=vertical_alignment.Fill
+                stack_box_slot:
+                    Widget:=EloUpdatesOverlay
+                    Padding:=margin{Left:=0.0,Top:=0.0,Right:=0.0,Bottom:=0.0}
+                    HorizontalAlignment:=horizontal_alignment.Left
+                    VerticalAlignment:=vertical_alignment.Bottom
+      
+                    
+
+                    
+        var MyCanvas : canvas = canvas:
+            Slots := array:
+                
+                
+                canvas_slot:
+                    Widget := MainStackBox
+                    Anchors:=anchors{Minimum:=vector2{X:=0.017,Y:=1.0},Maximum:=vector2{X:=0.1,Y:=1.0}}
+                    Alignment:=vector2{X:=0.421052,Y:=3.612044}
+                    
+                    SizeToContent:=true
+                  
+ 
+        return MyCanvas
