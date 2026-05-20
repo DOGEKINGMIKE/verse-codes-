@@ -1,0 +1,95 @@
+using { /Verse.org/Simulation }
+using { /Fortnite.com/Characters }
+
+player_stats_table1 := class<final><persistable>:
+    NbKill : float = 0.0
+    NbDeath : float = 0.0
+    NbKD : float = 0.0
+
+
+var PlayerStatMap2 : weak_map(player , player_stats_table1) = map{}
+
+
+MakePlayerStatsTable<constructor>(OldTable : player_stats_table1)<transacts> := player_stats_table1:
+    NbKill := OldTable.NbKill
+    NbDeath := OldTable.NbDeath
+    NbKD := OldTable.NbKD
+
+Persistence_Manager := class():
+
+    InitializePlayer(Player : player) : void=
+        if:
+            Player.IsActive[]
+            not PlayerStatMap2[Player]
+            set PlayerStatMap2[Player] = player_stats_table1{}
+
+    GetPlayerStats(Agent:agent) : player_stats_table1=
+        var NewPlayerStats : player_stats_table1 = player_stats_table1{}
+        if:
+            Player := player[Agent]
+        then:
+            if:
+                PlayerTable := PlayerStatMap2[Player]
+                PlayerTable
+            then:
+                set NewPlayerStats = PlayerTable
+        return NewPlayerStats
+
+
+    UpdateNbKill(Agent : agent, NewKill : float) : void=
+        if:
+            Player := player[Agent]
+        then:
+            if:
+                Player.IsActive[]
+            then:
+                if:
+                    PlayerTable := PlayerStatMap2[Player]
+                    PlayerTable
+                then:
+                    var NewStats : player_stats_table1 = player_stats_table1:
+                        NbKill := NewKill
+                        NbDeath := PlayerTable.NbDeath
+                        NbKD := PlayerTable.NbKD
+                    if(set PlayerStatMap2[Player] = NewStats):
+                        var Dummy : int = 0
+
+    UpdateNbDeath(Agent : agent, NewDeath : float) : void=
+        if:
+            Player := player[Agent]
+        then:
+            if:
+                Player.IsActive[]
+            then:
+                if:
+                    PlayerTable := PlayerStatMap2[Player]
+                    PlayerTable
+                then:
+                    var NewStats : player_stats_table1 = player_stats_table1:
+                        NbKill := PlayerTable.NbKill
+                        NbDeath := NewDeath
+                        NbKD := PlayerTable.NbKD
+                    if(set PlayerStatMap2[Player] = NewStats):
+                        var Dummy : int = 0
+
+    UpdateNbKD(Agent : agent, NewKD : float) : void=
+        if:
+            Player := player[Agent]
+        then:
+            if:
+                Player.IsActive[]
+            then:
+                if:
+                    PlayerTable := PlayerStatMap2[Player]
+                    PlayerTable
+                then:
+                    var NewStats : player_stats_table1 = player_stats_table1:
+                        NbKill := PlayerTable.NbKill
+                        NbDeath := PlayerTable.NbDeath
+                        NbKD := NewKD
+                    if(set PlayerStatMap2[Player] = NewStats):
+                        var Dummy : int = 0
+
+    
+
+                                
