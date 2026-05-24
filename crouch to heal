@@ -1,0 +1,59 @@
+<# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
+
+
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Fortnite.com/Characters }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+
+CrouchToHeal := class(creative_device):
+    @editable var Class : int = 0
+    @editable ClassTracker : tracker_device = tracker_device{}
+    @editable HUDablity : hud_message_device = hud_message_device{}
+
+    @editable AmountToHeal : float = 0.0
+
+
+    OnPlayerSpawned(Agent : agent): void=
+        if (Player := player[Agent]):
+            spawn{GiveItem(Agent)}
+
+    GiveItem(Agent : agent)<suspends>:void=
+        Sleep(1.0)
+        if(ClassTracker.GetValue(Agent) = Class):
+            HUDablity.Show(Agent)
+
+    CrouchToHealPlayer(Agent:agent) <suspends>: void=
+        if(Player := player[Agent] , FC:= Player.GetFortCharacter[]):
+            FC.CrouchedEvent().Subscribe(OnCrouch)
+
+    OnCrouch(FC : fort_character, IsCrouched : logic) : void=
+        if(Agent := FC.GetAgent[]):
+            if(ClassTracker.GetValue(Agent) = Class):
+                if(IsCrouched?):
+                    PlayerPos := FC.GetTransform().Translation
+
+                    HealthAmount := FC.GetHealth()
+                    FC.Heal(AmountToHeal)
+                else:
+
+<# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
