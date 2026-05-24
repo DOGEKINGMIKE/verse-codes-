@@ -1,0 +1,78 @@
+<# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
+
+
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Verse.org/Random }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Game }
+using { /Fortnite.com/UI }
+using { /Verse.org/Simulation/Tags }
+using { /UnrealEngine.com/Temporary/UI }
+using { /Verse.org/Colors/NamedColors }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+
+
+FreezeGun := class(creative_device):
+
+    @editable var Class : int = 0
+    @editable ClassTracker : tracker_device = tracker_device{}
+    @editable HUDablity : hud_message_device = hud_message_device{}
+
+    @editable ConditionalButton : conditional_button_device = conditional_button_device{}
+    @editable ItemGranter : item_granter_device = item_granter_device{} 
+
+    @editable FreezeTime : float = 2.0
+
+
+    OnPlayerSpawned(Agent : agent): void=
+        if (Player := player[Agent]):
+            spawn{CheckClass(Player)}
+
+    CheckClass(Player : player)<suspends>:void=
+        Sleep(1.0)
+        if(ClassTracker.GetValue(Player) = Class):
+            HUDablity.Show(Player)
+            ItemGranter.GrantItem(Player)
+            if (FortCharacter := Player.GetFortCharacter[]):   
+                FortCharacter.DamagedEvent().Subscribe(OnPlayerDamage)
+                
+    OnPlayerDamage(DamageResult : damage_result): void =
+        if:
+            Instigator := DamageResult.Instigator?
+            Agent := Instigator.GetInstigatorAgent[]
+            ConditionalButton.IsHoldingItem[Agent]
+            Target := fort_character[DamageResult.Target]
+        then:
+            spawn:
+                FreezePlayer(Target)
+
+    FreezePlayer(Target : fort_character)<suspends> : void =
+        Target.PutInStasis(stasis_args{})
+        Sleep(FreezeTime)
+        Target.ReleaseFromStasis()
+
+
+
+
+
+        <# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
