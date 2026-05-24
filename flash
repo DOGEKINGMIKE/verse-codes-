@@ -1,0 +1,55 @@
+<# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
+
+
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Fortnite.com/Characters }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+using { /Fortnite.com/Game }
+
+Flash := class(creative_device):
+
+    @editable var Class : int = 0
+    @editable ClassTracker : tracker_device = tracker_device{}
+    @editable HUDablity : hud_message_device = hud_message_device{}
+
+    @editable Speed : movement_modulator_device = movement_modulator_device{}
+    @editable RemoteManager : signal_remote_manager_device = signal_remote_manager_device{}
+    @editable ItemGranter : item_granter_device = item_granter_device{} 
+
+    OnPlayerSpawned(Agent : agent): void=
+        if (Player := player[Agent]):
+            spawn{CheckClass(Agent)}
+
+    CheckClass(Agent : agent)<suspends>:void=
+        Sleep(1.0)
+        if(ClassTracker.GetValue(Agent) = Class):
+            ItemGranter.GrantItem(Agent)
+            HUDablity.Show(Agent)
+
+    SpeedActivation(Agent : agent): void=
+        if(ClassTracker.GetValue(Agent) = Class):
+            Speed.Activate(Agent)
+
+
+
+            <# 
+|
+|    ██████╗   ██████╗   ██████╗  ███████╗ ██╗  ██╗ ██╗ ███╗   ██╗  ██████╗ ███╗   ███╗ ██╗ ██╗  ██╗ ███████╗
+|    ██╔══██╗ ██╔═══██╗ ██╔════╝  ██╔════╝ ██║ ██╔╝ ██║ ████╗  ██║ ██╔════╝ ████╗ ████║ ██║ ██║ ██╔╝ ██╔════╝
+|    ██║  ██║ ██║   ██║ ██║  ███╗ █████╗   █████╔╝  ██║ ██╔██╗ ██║ ██║  ███╗ ██╔████╔██║ ██║ █████╔╝  █████╗
+|    ██║  ██║ ██║   ██║ ██║   ██║ ██╔══╝   ██╔═██╗  ██║ ██║╚██╗██║ ██║   ██║ ██║╚██╔╝██║ ██║ ██╔═██╗  ██╔══╝
+|    ██████╔╝ ╚██████╔╝ ╚██████╔╝ ███████╗ ██║  ██╗ ██║ ██║ ╚████║ ╚██████╔╝ ██║ ╚═╝ ██║ ██║ ██║  ██╗ ███████╗
+|    ╚═════╝   ╚═════╝   ╚═════╝  ╚══════╝ ╚═╝  ╚═╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═╝ ╚══════╝
+|
+#>
